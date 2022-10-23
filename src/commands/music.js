@@ -14,9 +14,30 @@ const downloadFile = async (url) => {
         });
     });
 };
-let trackQueue = [];
-const player = Voice.createAudioPlayer();
-let trackPlayingNow = false;
+
+let servers = {}
+
+const initialize = (guildIds) => {
+    guildIds.forEach(id => {
+        servers[id] = {
+            trackQueue: [],
+            trackPlayingNow: false,
+            player: Voice.createAudioPlayer(),
+        }
+    })
+    Object.keys(servers).forEach(guildId => {
+        let server = servers[guildId]
+        server.player.once(Voice.AudioPlayerStatus.Playing, () => {
+            server.trackPlayingNow = true
+        })
+        server.player.once(Voice.AudioPlayerStatus.Idle, () => {
+            server.trackPlayingNow = false
+            dequeueTrack(guildId)
+        })
+    })
+    
+}
+
 const getytlp_info = async (url, isSearch) => {
     let info = await youtubedl(url, {
         dumpSingleJson: true,
@@ -24,6 +45,7 @@ const getytlp_info = async (url, isSearch) => {
         noWarnings: true,
         defaultSearch: isSearch ? "ytsearch" : null,
         preferFreeFormats: true,
+        lazyPlaylist: true,
         addHeader: ["referer:youtube.com", "user-agent:googlebot"],
         format: "bestaudio",
     });
@@ -35,13 +57,13 @@ FFMPEG_OPTIONS = {
     options: "-vn",
 };
 
-const leave_channel = async (guild_id) => {
-    let voiceConnection = Voice.getVoiceConnection(guild_id);
+const leave_channel = async (guildId) => {
+    let voiceConnection = Voice.getVoiceConnection(guildId);
     if (!voiceConnection) return;
-    player.stop();
+    servers[guildId].player.stop();
     voiceConnection.destroy()
-    trackQueue = []
-    trackPlayingNow = false;
+    servers[guildId].trackPlayingNow = false;
+    servers[guildId].trackQueue = []
 };
 
 const join_channel = async (message) => {
@@ -59,49 +81,77 @@ const join_channel = async (message) => {
     });
     return connection;
 };
-const getQueueAsText = () => {
+
+const getQueueAsText = (guild_id) => {
     let out = `Track queue: \n`
+    const trackQueue = servers[guild_id].trackQueue
     trackQueue.forEach((value, index) => {
-        out += `${index + 1}) ${value.source} \n`
+        const trackInfo = value.trackInfo
+        out += `${index + 1}) ${trackInfo.fulltitle}    ${trackInfo.duration_string}    ${index === 0 ? "<--|" : ""}\n`
     })
     return out;
 }
 
 const queueTrack = async (message, source) => {
-    if(trackQueue.length == 0 && !trackPlayingNow){
-        trackQueue.push({message, source})
-        dequeueTrack()
+    let trackQueue = servers[message.guildId].trackQueue
+    let trackPlayingNow = servers[message.guildId].trackPlayingNow
+    const lnk = isLink(source)
+    let trackInfo = await getytlp_info(source, !lnk)
+    if (!lnk){
+        trackInfo = trackInfo.entries[0]
+    }
+    if(trackQueue.length === 0 && !trackPlayingNow){
+        trackQueue.push({message, trackInfo: trackInfo})
+        let track = trackQueue[0]
+        await playYoutubeAudio(track.message, track.trackInfo)
     }
     else{
-        trackQueue.push({message, source})
+        trackQueue.push({message, trackInfo: trackInfo})
     }
     
     
 };
 
-const popTrackQueue = () => {
+const popTrackQueue = (guildId) => {
+    const server = servers[guildId]
+    let trackQueue = server.trackQueue
     if(trackQueue.length == 0) return null;
-    let poppedTrack = trackQueue[0];
-    trackQueue = trackQueue.slice(1, trackQueue.length)
+    let poppedTrack = trackQueue[0]
+    server.trackQueue = trackQueue.slice(1)
     return poppedTrack
 }
 
-const dequeueTrack = async () => {
-    let poppedTrack = popTrackQueue()
-    if(!poppedTrack) return
-    playYoutubeAudio(poppedTrack.message, poppedTrack.source)
+const dequeueTrack = async (guildId) => {
+    popTrackQueue(guildId)
+    let server = servers[guildId]
+    server.trackPlayingNow = false
+    if(servers[guildId].subscription){
+        servers[guildId].subscription.unsubscribe()
+    }
+    if(server.trackQueue.length === 0){
+        leave_channel(guildId)
+        return
+    }
+    let track = server.trackQueue[0]
+    server.trackPlayingNow = true
+    
+    
+    playYoutubeAudio(track.message, track.trackInfo)
 }
 
 const isLink = (text) => {
     return /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)/.test(text)
 }
 
-const playYoutubeAudio = async (message, source) => {
-    let voice_connection = Voice.getVoiceConnection(message.guildId);
+
+
+const playYoutubeAudio = async (message, trackInfo) => {
+    const guildId = message.guildId
+    let voice_connection = Voice.getVoiceConnection(guildId);
     if(!voice_connection){
         voice_connection = await join_channel(message)
     }
-    
+    let source = trackInfo.original_url
     if (!source) return;
     const srch = !isLink(source)
     let inf = await getytlp_info(source, srch);
@@ -110,33 +160,26 @@ const playYoutubeAudio = async (message, source) => {
         inf = inf.entries[0]
     }
     let url = inf.url;
-    const map = new Map();
-    const stream = got.stream(url, {
-        cache: map
+    let mp = new Map()
+    let stream = got.stream(url);
+    const { s, type } = await Voice.demuxProbe(stream);
+    stream = got.stream(url, {
+        cache: mp
     });
-    const type = Voice.StreamType.WebmOpus
-    // const stream = fs.createReadStream(file_info.filename)
     const resource = Voice.createAudioResource(stream, {
         inputType: type
     })
+    const player = servers[guildId].player
     player.play(resource);
-    const subscription = voice_connection.subscribe(player);
-    // if (subscription) {
-    //     // Unsubscribe after 5 seconds (stop playing audio on the voice connection)
-    //     setTimeout(() => subscription.unsubscribe(), 5_000);
-    // }
-    player.once(Voice.AudioPlayerStatus.Playing, () => {
-        trackPlayingNow = true;
-    })
-    player.once(Voice.AudioPlayerStatus.Idle, () => {
-        trackPlayingNow = false;
-        dequeueTrack()
-    })
+    servers[guildId].subscription = voice_connection.subscribe(player);
+    
+    
     
 };
 
 module.exports = {
     playYoutubeAudio,
+    initialize,
     leave_channel,
     queueTrack,
     getQueueAsText,

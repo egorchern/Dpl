@@ -19,47 +19,12 @@ const client = new Discord.Client({
 
 client.once(Events.ClientReady, (c) => {
     console.log(`Ready! Logged in as ${c.user.tag}`);
+    let ids = c.guilds.cache.map(item => item.id)
+    Music.initialize(ids)
+
 });
 
-// const commandsPath = path.join(__dirname, "commands");
-// const commandFiles = fs
-//     .readdirSync(commandsPath)
-//     .filter((file) => file.endsWith(".js"));
-// client.commands = new Discord.Collection();
 
-// for (const file of commandFiles) {
-//     const filePath = path.join(commandsPath, file);
-//     const command = require(filePath);
-//     // Set a new item in the Collection with the key as the command name and the value as the exported module
-//     if ("data" in command && "execute" in command) {
-//         client.commands.set(command.data.name, command);
-//     } else {
-//         console.log(
-//             `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
-//         );
-//     }
-// }
-// client.on(Events.InteractionCreate, async (interaction) => {
-//     if (!interaction.isChatInputCommand()) return;
-//     const command = interaction.client.commands.get(interaction.commandName);
-
-//     if (!command) {
-//         console.error(
-//             `No command matching ${interaction.commandName} was found.`
-//         );
-//         return;
-//     }
-
-//     try {
-//         await command.execute(interaction);
-//     } catch (error) {
-//         console.error(error);
-//         await interaction.reply({
-//             content: "There was an error while executing this command!",
-//             ephemeral: true,
-//         });
-//     }
-// });
 const sendReply = async (messageObj, text) => {
     messageObj.channel.send({
         content: `\`\`\`${text}\`\`\``,
@@ -78,25 +43,25 @@ client.on("messageCreate", async (message) => {
         case "play": {
             try {
                 let source = parts.slice(1).join(" ");
-                Music.queueTrack(message, source)
-                sendReply(message, Music.getQueueAsText())
+                await Music.queueTrack(message, source)
+                await sendReply(message, Music.getQueueAsText(message.guildId))
             } catch {}
             break;
         }
         case "stop": {
             try{
-                Music.leave_channel(message.guildId);
+                await Music.leave_channel(message.guildId);
             }
             catch {
 
             }
         }
         case "skip": {
-            await Music.dequeueTrack()
-            sendReply(message, Music.getQueueAsText())
+            await Music.dequeueTrack(message.guildId)
+            await sendReply(message, Music.getQueueAsText(message.guildId))
         }
         case "queue": {
-            sendReply(message, Music.getQueueAsText())
+            await sendReply(message, Music.getQueueAsText(message.guildId))
         }
     }
 });
