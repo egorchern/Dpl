@@ -63,10 +63,13 @@ client.once(Events.ClientReady, (c) => {
 const sendReply = async (messageObj, text) => {
     messageObj.channel.send({
         content: text,
-        reply: messageObj
+        reply: {
+            messageReference: messageObj
+        },
+        
     });
     
-    console.log("sent");
+    console.log(`Message: "${text}" sent`);
 };
 
 client.on("messageCreate", async (message) => {

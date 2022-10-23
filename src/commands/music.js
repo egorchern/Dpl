@@ -23,7 +23,7 @@ const fetchYoutubeAudioUrl = async (url) => {
         addHeader: ["referer:youtube.com", "user-agent:googlebot"],
         format: "bestaudio",
     });
-    let full_url = info.requested_downloads[0].url;
+    let full_url = info.url
     return full_url;
 };
 
@@ -53,7 +53,6 @@ const join_channel = async (message) => {
     });
     return connection;
 };
-//https://www.youtube.com/watch?v=fhXE7hhNPmM
 
 const playYoutubeAudio = async (message, youtube_url) => {
     const channel_info = await join_channel(message);
@@ -61,8 +60,7 @@ const playYoutubeAudio = async (message, youtube_url) => {
         if (!youtube_url) return;
         let url = await fetchYoutubeAudioUrl(youtube_url);
         // let file_info = await downloadFile(url)
-        // const stream = got.stream(url);
-        const stream = url;
+        const stream = got.stream(url);
         // const stream = fs.createReadStream(file_info.filename)
         const player = Voice.createAudioPlayer();
         const resource = Voice.createAudioResource(stream, {
