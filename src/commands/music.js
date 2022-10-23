@@ -32,6 +32,12 @@ FFMPEG_OPTIONS = {
     options: "-vn",
 };
 
+const leave_channel = async (guild_id) => {
+    let voiceConnection = Voice.getVoiceConnection(guild_id)
+    if (!voiceConnection) return
+    voiceConnection.disconnect();
+}
+
 const join_channel = async (message) => {
     const voiceChannel = message.member.voice.channel;
     // Member not in a voice channel
@@ -71,4 +77,5 @@ const playYoutubeAudio = async (message, youtube_url) => {
 module.exports = {
     playYoutubeAudio,
     fetchYoutubeAudioUrl,
+    leave_channel
 };

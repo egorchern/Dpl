@@ -13,6 +13,7 @@ const client = new Discord.Client({
         intentsEnum.GuildMessages,
         intentsEnum.MessageContent,
         intentsEnum.GuildVoiceStates,
+        intentsEnum.GuildVoiceStates
     ],
 });
 
@@ -79,6 +80,15 @@ client.on("messageCreate", async (message) => {
                 Music.playYoutubeAudio(message, youtube_url);
                 sendReply(message, `Playing ${youtube_url}`)
             } catch {}
+            break;
+        }
+        case "stop": {
+            try{
+                Music.leave_channel(message.guildId);
+            }
+            catch {
+
+            }
         }
     }
 });
