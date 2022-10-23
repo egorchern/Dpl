@@ -62,10 +62,8 @@ client.once(Events.ClientReady, (c) => {
 // });
 const sendReply = async (messageObj, text) => {
     messageObj.channel.send({
-        content: text,
-        reply: {
-            messageReference: messageObj
-        },
+        content: `\`\`\`${text}\`\`\``,
+        
         
     });
     
@@ -79,9 +77,9 @@ client.on("messageCreate", async (message) => {
     switch (parts[0]) {
         case "play": {
             try {
-                let youtube_url = parts[1];
-                Music.playYoutubeAudio(message, youtube_url);
-                sendReply(message, `Playing ${youtube_url}`)
+                let source = parts.slice(1).join(" ");
+                Music.queueTrack(message, source)
+                sendReply(message, Music.getQueueAsText())
             } catch {}
             break;
         }
@@ -92,6 +90,13 @@ client.on("messageCreate", async (message) => {
             catch {
 
             }
+        }
+        case "skip": {
+            await Music.dequeueTrack()
+            sendReply(message, Music.getQueueAsText())
+        }
+        case "queue": {
+            sendReply(message, Music.getQueueAsText())
         }
     }
 });

@@ -14,17 +14,20 @@ const downloadFile = async (url) => {
         });
     });
 };
-const fetchYoutubeAudioUrl = async (url) => {
+let trackQueue = [];
+const player = Voice.createAudioPlayer();
+let trackPlayingNow = false;
+const getytlp_info = async (url, isSearch) => {
     let info = await youtubedl(url, {
         dumpSingleJson: true,
         noCheckCertificates: true,
         noWarnings: true,
+        defaultSearch: isSearch ? "ytsearch" : null,
         preferFreeFormats: true,
         addHeader: ["referer:youtube.com", "user-agent:googlebot"],
         format: "bestaudio",
     });
-    let full_url = info.url
-    return full_url;
+    return info
 };
 
 FFMPEG_OPTIONS = {
@@ -33,10 +36,13 @@ FFMPEG_OPTIONS = {
 };
 
 const leave_channel = async (guild_id) => {
-    let voiceConnection = Voice.getVoiceConnection(guild_id)
-    if (!voiceConnection) return
-    voiceConnection.disconnect();
-}
+    let voiceConnection = Voice.getVoiceConnection(guild_id);
+    if (!voiceConnection) return;
+    player.stop();
+    voiceConnection.destroy()
+    trackQueue = []
+    trackPlayingNow = false;
+};
 
 const join_channel = async (message) => {
     const voiceChannel = message.member.voice.channel;
@@ -53,27 +59,86 @@ const join_channel = async (message) => {
     });
     return connection;
 };
+const getQueueAsText = () => {
+    let out = `Track queue: \n`
+    trackQueue.forEach((value, index) => {
+        out += `${index + 1}) ${value.source} \n`
+    })
+    return out;
+}
 
-const playYoutubeAudio = async (message, youtube_url) => {
-    const channel_info = await join_channel(message);
-    if (channel_info) {
-        if (!youtube_url) return;
-        let url = await fetchYoutubeAudioUrl(youtube_url);
-        // let file_info = await downloadFile(url)
-        const stream = got.stream(url);
-        // const stream = fs.createReadStream(file_info.filename)
-        const player = Voice.createAudioPlayer();
-        const resource = Voice.createAudioResource(stream, {
-            inputType: Voice.StreamType.WebmOpus,
-        });
-        player.play(resource);
-        channel_info.subscribe(player);
+const queueTrack = async (message, source) => {
+    if(trackQueue.length == 0 && !trackPlayingNow){
+        trackQueue.push({message, source})
+        dequeueTrack()
     }
-    return
+    else{
+        trackQueue.push({message, source})
+    }
+    
+    
+};
+
+const popTrackQueue = () => {
+    if(trackQueue.length == 0) return null;
+    let poppedTrack = trackQueue[0];
+    trackQueue = trackQueue.slice(1, trackQueue.length)
+    return poppedTrack
+}
+
+const dequeueTrack = async () => {
+    let poppedTrack = popTrackQueue()
+    if(!poppedTrack) return
+    playYoutubeAudio(poppedTrack.message, poppedTrack.source)
+}
+
+const isLink = (text) => {
+    return /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)/.test(text)
+}
+
+const playYoutubeAudio = async (message, source) => {
+    let voice_connection = Voice.getVoiceConnection(message.guildId);
+    if(!voice_connection){
+        voice_connection = await join_channel(message)
+    }
+    
+    if (!source) return;
+    const srch = !isLink(source)
+    let inf = await getytlp_info(source, srch);
+    // let file_info = await downloadFile(url)
+    if (srch){
+        inf = inf.entries[0]
+    }
+    let url = inf.url;
+    const map = new Map();
+    const stream = got.stream(url, {
+        cache: map
+    });
+    const type = Voice.StreamType.WebmOpus
+    // const stream = fs.createReadStream(file_info.filename)
+    const resource = Voice.createAudioResource(stream, {
+        inputType: type
+    })
+    player.play(resource);
+    const subscription = voice_connection.subscribe(player);
+    // if (subscription) {
+    //     // Unsubscribe after 5 seconds (stop playing audio on the voice connection)
+    //     setTimeout(() => subscription.unsubscribe(), 5_000);
+    // }
+    player.once(Voice.AudioPlayerStatus.Playing, () => {
+        trackPlayingNow = true;
+    })
+    player.once(Voice.AudioPlayerStatus.Idle, () => {
+        trackPlayingNow = false;
+        dequeueTrack()
+    })
+    
 };
 
 module.exports = {
     playYoutubeAudio,
-    fetchYoutubeAudioUrl,
-    leave_channel
+    leave_channel,
+    queueTrack,
+    getQueueAsText,
+    dequeueTrack
 };
