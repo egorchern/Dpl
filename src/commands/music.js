@@ -161,11 +161,10 @@ const playYoutubeAudio = async (message, trackInfo) => {
     }
     let url = inf.url;
     let mp = new Map()
-    let stream = got.stream(url);
-    const { s, type } = await Voice.demuxProbe(stream);
-    stream = got.stream(url, {
+    const stream = got.stream(url, {
         cache: mp
     });
+    const type = Voice.StreamType.WebmOpus
     const resource = Voice.createAudioResource(stream, {
         inputType: type
     })
