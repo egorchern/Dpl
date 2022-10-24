@@ -27,11 +27,12 @@ const initialize = (guildIds) => {
     })
     Object.keys(servers).forEach(guildId => {
         let server = servers[guildId]
-        server.player.once(Voice.AudioPlayerStatus.Playing, () => {
+        server.player.on(Voice.AudioPlayerStatus.Playing, () => {
             server.trackPlayingNow = true
         })
-        server.player.once(Voice.AudioPlayerStatus.Idle, () => {
+        server.player.on(Voice.AudioPlayerStatus.Idle, () => {
             server.trackPlayingNow = false
+            console.log("dequed")
             dequeueTrack(guildId)
         })
     })
@@ -83,6 +84,8 @@ const join_channel = async (message) => {
 };
 
 const getQueueAsText = (guild_id) => {
+    Voice.createAudioPlayer()
+    servers[guild_id].player
     let out = `Track queue: \n`
     const trackQueue = servers[guild_id].trackQueue
     trackQueue.forEach((value, index) => {
@@ -103,6 +106,7 @@ const queueTrack = async (message, source) => {
     if(trackQueue.length === 0 && !trackPlayingNow){
         trackQueue.push({message, trackInfo: trackInfo})
         let track = trackQueue[0]
+        servers[message.guildId].trackPlayingNow = true
         await playYoutubeAudio(track.message, track.trackInfo)
     }
     else{
@@ -125,17 +129,12 @@ const dequeueTrack = async (guildId) => {
     popTrackQueue(guildId)
     let server = servers[guildId]
     server.trackPlayingNow = false
-    if(servers[guildId].subscription){
-        servers[guildId].subscription.unsubscribe()
-    }
     if(server.trackQueue.length === 0){
         leave_channel(guildId)
         return
     }
     let track = server.trackQueue[0]
     server.trackPlayingNow = true
-    
-    
     playYoutubeAudio(track.message, track.trackInfo)
 }
 
@@ -168,9 +167,8 @@ const playYoutubeAudio = async (message, trackInfo) => {
     const resource = Voice.createAudioResource(stream, {
         inputType: type
     })
-    const player = servers[guildId].player
-    player.play(resource);
-    servers[guildId].subscription = voice_connection.subscribe(player);
+    servers[guildId].player.play(resource);
+    const sub = voice_connection.subscribe(servers[guildId].player);
     
     
     
