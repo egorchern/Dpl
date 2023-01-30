@@ -42,6 +42,7 @@ const initialize = (guildIds) => {
 const getytlp_info = async (url, isSearch) => {
     let info = await youtubedl(url, {
         dumpSingleJson: true,
+        download:false,
         noCheckCertificates: true,
         noWarnings: true,
         defaultSearch: isSearch ? "ytsearch" : null,
@@ -53,10 +54,7 @@ const getytlp_info = async (url, isSearch) => {
     return info
 };
 
-FFMPEG_OPTIONS = {
-    before_options: "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    options: "-vn",
-};
+FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 
 const leave_channel = async (guildId) => {
     let voiceConnection = Voice.getVoiceConnection(guildId);
@@ -142,7 +140,11 @@ const isLink = (text) => {
     return /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[\-;:&=\+\$,\w]+@)?[A-Za-z0-9\.\-]+|(?:www\.|[\-;:&=\+\$,\w]+@)[A-Za-z0-9\.\-]+)((?:\/[\+~%\/\.\w\-_]*)?\??(?:[\-\+=&;%@\.\w_]*)#?(?:[\.\!\/\\\w]*))?)/.test(text)
 }
 
-
+async function probeAndCreateResource(readableStream) {
+	const { stream, type } = await Voice.demuxProbe(readableStream);
+    console.log(type);
+	return createAudioResource(stream, { inputType: type });
+}
 
 const playYoutubeAudio = async (message, trackInfo) => {
     const guildId = message.guildId
@@ -159,13 +161,7 @@ const playYoutubeAudio = async (message, trackInfo) => {
         inf = inf.entries[0]
     }
     let url = inf.url;
-    let mp = new Map()
-    const stream = got.stream(url, {
-        cache: mp
-    });
-    const type = Voice.StreamType.WebmOpus
-    const resource = Voice.createAudioResource(stream, {
-        inputType: type
+    const resource = Voice.createAudioResource(url, {
     })
     servers[guildId].player.play(resource);
     const sub = voice_connection.subscribe(servers[guildId].player);
