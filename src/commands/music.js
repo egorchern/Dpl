@@ -1,4 +1,4 @@
-const {SlashCommandBuilder} = require("discord.js");
+const {SlashCommandBuilder, Faces} = require("discord.js");
 const Voice = require("@discordjs/voice");
 const youtubedl = require("youtube-dl-exec");
 const got = require("got");
@@ -22,11 +22,16 @@ const initialize = (guildIds) => {
         servers[id] = {
             trackQueue: [],
             trackPlayingNow: false,
-            player: Voice.createAudioPlayer(),
+            player: Voice.createAudioPlayer({
+                behaviors: {
+                    noSubscriber: Voice.NoSubscriberBehavior.Stop,
+                }
+            }),
         }
     })
     Object.keys(servers).forEach(guildId => {
         let server = servers[guildId]
+        server.infinitePlay = true
         server.player.on(Voice.AudioPlayerStatus.Playing, () => {
             server.trackPlayingNow = true
         })
@@ -80,6 +85,15 @@ const join_channel = async (message) => {
     });
     return connection;
 };
+const config = require("../../config.json")
+
+const get_reccommends = async (id) => {
+    const res = await fetch(`https://youtube.googleapis.com/youtube/v3/search?part=snippet&relatedToVideoId=${id}&type=video&key=${config.youtube_api_token}`).then(res => res.json())
+    console.log(res)
+    return res.items.map((item) => {
+        return `https://www.youtube.com/watch?v=${item.id.videoId}`
+    })
+}
 
 const getQueueAsText = (guild_id) => {
     Voice.createAudioPlayer()
@@ -98,9 +112,11 @@ const queueTrack = async (message, source) => {
     let trackPlayingNow = servers[message.guildId].trackPlayingNow
     const lnk = isLink(source)
     let trackInfo = await getytlp_info(source, !lnk)
-    if (!lnk){
+    if (Object.hasOwn(trackInfo, "entries")){
         trackInfo = trackInfo.entries[0]
     }
+
+    
     if(trackQueue.length === 0 && !trackPlayingNow){
         trackQueue.push({message, trackInfo: trackInfo})
         let track = trackQueue[0]
@@ -124,12 +140,21 @@ const popTrackQueue = (guildId) => {
 }
 
 const dequeueTrack = async (guildId) => {
-    popTrackQueue(guildId)
+    const lastTrack = popTrackQueue(guildId)
     let server = servers[guildId]
     server.trackPlayingNow = false
+    
     if(server.trackQueue.length === 0){
-        leave_channel(guildId)
-        return
+        if(!server.infinitePlay || !lastTrack){
+            leave_channel(guildId)
+            return
+        }
+        server.trackPlayingNow = true
+        const recommends = await get_reccommends(lastTrack.trackInfo.id)
+        await Promise.all(recommends.map(async (link) => {
+            return queueTrack(lastTrack.message, link)
+        }))
+        
     }
     let track = server.trackQueue[0]
     server.trackPlayingNow = true
@@ -156,8 +181,7 @@ const playYoutubeAudio = async (message, trackInfo) => {
     if (!source) return;
     const srch = !isLink(source)
     let inf = await getytlp_info(source, srch);
-    // let file_info = await downloadFile(url)
-    if (srch){
+    if (Object.hasOwn(trackInfo, "entries")){
         inf = inf.entries[0]
     }
     let url = inf.url;
