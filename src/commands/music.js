@@ -45,18 +45,24 @@ const initialize = (guildIds) => {
 }
 
 const getytlp_info = async (url, isSearch) => {
-    let info = await youtubedl(url, {
-        dumpSingleJson: true,
-        download:false,
-        noCheckCertificates: true,
-        noWarnings: true,
-        defaultSearch: isSearch ? "ytsearch" : null,
-        preferFreeFormats: true,
-        lazyPlaylist: true,
-        addHeader: ["referer:youtube.com", "user-agent:googlebot"],
-        format: "bestaudio",
-    });
-    return info
+    try{
+        let info = await youtubedl(url, {
+            dumpSingleJson: true,
+            download:false,
+            noCheckCertificates: true,
+            noWarnings: true,
+            defaultSearch: isSearch ? "ytsearch" : null,
+            preferFreeFormats: true,
+            lazyPlaylist: true,
+            addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+            format: "bestaudio",
+        });
+        return info
+    } catch (error){
+        console.log(error)
+        return null;
+    }
+    
 };
 
 FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
@@ -176,11 +182,17 @@ const playYoutubeAudio = async (message, trackInfo) => {
     let voice_connection = Voice.getVoiceConnection(guildId);
     if(!voice_connection){
         voice_connection = await join_channel(message)
+        if (!voice_connection){
+            return false
+        }
     }
     let source = trackInfo.original_url
     if (!source) return;
     const srch = !isLink(source)
     let inf = await getytlp_info(source, srch);
+    if (!inf){
+        return false
+    }
     if (Object.hasOwn(trackInfo, "entries")){
         inf = inf.entries[0]
     }
